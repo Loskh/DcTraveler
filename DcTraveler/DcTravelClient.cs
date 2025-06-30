@@ -1,6 +1,7 @@
 using FFXIVClientStructs.FFXIV.Client.Game.Character;
 using Serilog;
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net.Http;
@@ -24,7 +25,8 @@ namespace DcTraveler
         {
             foreach (var group in GroupList)
             {
-                group.Area = this;
+                group.AreaName = this.AreaName;
+                group.AreaId = this.AreaId;
             }
         }
     }
@@ -45,8 +47,8 @@ namespace DcTraveler
     }
     public class Group
     {
-        [JsonIgnore]
-        public Area Area { get; set; }
+        public int AreaId { get; set; }
+        public string AreaName { get; set; }
         [JsonPropertyName("groupId")]
         public int GroupId { get; set; }
         [JsonPropertyName("amount")]
@@ -62,6 +64,7 @@ namespace DcTraveler
     {
         Failed = -1,
         InPrepare = 0,
+        UnkownCompleted =3,
         InQueue = 4,
         Completed = 5,
     }

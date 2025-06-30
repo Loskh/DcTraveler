@@ -19,7 +19,8 @@ namespace DcTraveler.Windows
             {MigrationStatus.Failed,"传送失败" },
             {MigrationStatus.InPrepare,"检查角色中..." },
             {MigrationStatus.InQueue,"排队中..." },
-            {MigrationStatus.Completed,"传送失败" },
+            {MigrationStatus.Completed,"传送完成" },
+            {MigrationStatus.UnkownCompleted,"传送完成" },
         };
         public WaitingWindow() : base("WaitingOrder", ImGuiWindowFlags.NoResize | ImGuiWindowFlags.NoMove | ImGuiWindowFlags.NoTitleBar|ImGuiWindowFlags.AlwaysAutoResize|ImGuiWindowFlags.NoSavedSettings)
         {

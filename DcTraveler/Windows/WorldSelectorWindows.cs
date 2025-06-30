@@ -7,12 +7,25 @@ using System.Linq;
 using System.Numerics;
 using System.Text;
 using System.Threading.Tasks;
+using static FFXIVClientStructs.FFXIV.Client.Graphics.Render.ModelRenderer;
 
 namespace DcTraveler.Windows
 {
+    public class WorldSelectResult
+    {
+        public bool IsOk { get; set; }
+        public Area Source { get; set; }
+        public Area Target { get; set; }
+    }
+
+    public class SelectWorldResult
+    {
+        public Group Source { get; set; }
+        public Group Target { get; set; }
+    }
     internal class WorldSelectorWindows : Window, IDisposable
     {
-        public WorldSelectorWindows() : base("超域传送", ImGuiWindowFlags.NoCollapse | ImGuiWindowFlags.AlwaysAutoResize)
+        public WorldSelectorWindows() : base("超域传送", ImGuiWindowFlags.NoCollapse | ImGuiWindowFlags.AlwaysAutoResize | ImGuiWindowFlags.NoSavedSettings)
         {
         }
 
@@ -25,6 +38,16 @@ namespace DcTraveler.Windows
         private List<string[]> world = new();
         private int targetDcIndex = 0;
         private int targetWorldIndex = 0;
+        private List<Area> areas;
+
+        public override void PreDraw()
+        {
+            var viewport = ImGui.GetMainViewport();
+            var center = viewport.GetCenter();
+            ImGui.SetNextWindowPos(center, ImGuiCond.Appearing, new Vector2(0.5f, 0.5f));
+            //Log.Information("Middle");
+            base.PreDraw();
+        }
         public override void Draw()
         {
             if (showSourceWorld)
@@ -56,12 +79,36 @@ namespace DcTraveler.Windows
                 ImGui.ListBox("##TargetServer", ref targetWorldIndex, world[targetDcIndex], world[targetDcIndex].Length, 7);
                 ImGui.EndTable();
             }
-            ImGui.Button(isBack ? "返回" : "传送");
+            var sameDc = (currentDcIndex == targetDcIndex);
+            if (sameDc)
+            {
+                ImGui.BeginDisabled();
+            }
+            if (ImGui.Button(isBack ? "返回" : "传送"))
+            {
+                this.selectWorldTaskCompletionSource?.SetResult(
+                    new SelectWorldResult() {
+                        Source = areas[currentDcIndex].GroupList[currentWorldIndex], 
+                        Target = areas[targetDcIndex].GroupList[targetWorldIndex] 
+                    });
+                this.IsOpen = false;
+            }
+            if (sameDc)
+            {
+                ImGui.EndDisabled();
+            }
             ImGui.SameLine();
-            ImGui.Button("取消");
+            if (ImGui.Button("取消"))
+            {
+                this.selectWorldTaskCompletionSource?.SetResult(null);
+                this.IsOpen = false;
+            }
         }
-        public void OpenTravelWindow(bool showSourceWorld, bool showTargetWorld, bool isBack, List<Area> areas, string currentDcName = null, string currentWorldCode = null, string targetDcName = null, string targetWorldCode = null)
+        private TaskCompletionSource<SelectWorldResult>? selectWorldTaskCompletionSource;
+        public Task<SelectWorldResult> OpenTravelWindow(bool showSourceWorld, bool showTargetWorld, bool isBack, List<Area> areas, string currentDcName = null, string currentWorldCode = null, string targetDcName = null, string targetWorldCode = null)
         {
+            this.selectWorldTaskCompletionSource = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            this.areas = areas;
             this.showSourceWorld = showSourceWorld;
             this.showTargetWorld = showTargetWorld;
             this.isBack = isBack;
@@ -84,6 +131,7 @@ namespace DcTraveler.Windows
                 }
             }
             this.IsOpen = true;
+            return this.selectWorldTaskCompletionSource.Task;
         }
 
         public void Dispose()

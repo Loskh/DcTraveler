@@ -8,13 +8,11 @@ using Dalamud.IoC;
 using Dalamud.Plugin;
 using Dalamud.Plugin.Services;
 using DcTraveler.Windows;
-using FFXIVClientStructs.FFXIV.Client.System.Framework;
 using FFXIVClientStructs.FFXIV.Client.UI.Agent;
 using Lumina.Excel.Sheets;
 using System;
-using System.IO;
 using System.Linq;
-using System.Threading.Tasks;
+using System.Threading;
 using Task = System.Threading.Tasks.Task;
 namespace DcTraveler;
 
@@ -46,6 +44,7 @@ public sealed class Plugin : IDalamudPlugin
     internal static IFontHandle Font { get; private set; }
 
     internal static GameFunctions GameFunctions { get; private set; }
+    internal string LastErrorMessage { get; private set; }
     public Plugin()
     {
         Configuration = PluginInterface.GetPluginConfig() as Configuration ?? new Configuration();
@@ -70,11 +69,19 @@ public sealed class Plugin : IDalamudPlugin
         AddonLifecycle.RegisterListener(AddonEvent.PreFinalize, "_CharaSelectListMenu", (type, args) => { ContextMenu.OnMenuOpened -= this.OnContextMenuOpened; });
         AddonLifecycle.RegisterListener(AddonEvent.PostSetup, "_CharaSelectListMenu", (type, args) => { ContextMenu.OnMenuOpened += this.OnContextMenuOpened; });
 #endif
-        Task.Run(() => { this.sdoAreas = SdoArea.Get().Result; });
         //WaitingWindow.Open();
         GameFunctions = new GameFunctions();
-        var port = GameFunctions.GetXLDcTravelerPort();
-        DcTravelClient = new DcTravelClient(port);
+        try
+        {
+            Task.Run(() => { this.sdoAreas = SdoArea.Get().Result; });
+            var port = GameFunctions.GetXLDcTravelerPort();
+            DcTravelClient = new DcTravelClient(port);
+        }
+        catch (Exception ex)
+        {
+            LastErrorMessage = ex.Message;
+            Log.Error(ex.ToString());
+        }
     }
 
     public static void SetupFont()
@@ -104,13 +111,14 @@ public sealed class Plugin : IDalamudPlugin
         var currentCharacterEntry = agentLobby->LobbyData.CharaSelectEntries[agentLobby->SelectedCharacterIndex].Value;
         var currentWorldId = currentCharacterEntry->CurrentWorldId;
         var homeWorldId = currentCharacterEntry->HomeWorldId;
+        var currentCharacterName = currentCharacterEntry->NameString;
         var isDcTravling = currentCharacterEntry->LoginFlags == CharaSelectCharacterEntryLoginFlags.DCTraveling || currentCharacterEntry->LoginFlags == CharaSelectCharacterEntryLoginFlags.DCTraveling;
         if (isDcTravling)
         {
             args.AddMenuItem(new MenuItem
             {
                 Name = "超域返回",
-                OnClicked = (clickedArgs) => TravelBack(homeWorldId, currentWorldId, selectedCharacterContentId),
+                OnClicked = (clickedArgs) => Travel(homeWorldId, currentWorldId, selectedCharacterContentId, true, currentCharacterName),
                 Prefix = Dalamud.Game.Text.SeIconChar.CrossWorld,
                 PrefixColor = 48,
                 IsEnabled = true
@@ -121,7 +129,7 @@ public sealed class Plugin : IDalamudPlugin
             args.AddMenuItem(new MenuItem
             {
                 Name = "超域传送",
-                //OnClicked = this.GetMenuItemClickedHandler(itemId),
+                OnClicked = (clickedArgs) => Travel(0, currentWorldId, selectedCharacterContentId, false, currentCharacterName),
                 Prefix = Dalamud.Game.Text.SeIconChar.CrossWorld,
                 PrefixColor = 48,
                 IsEnabled = (currentWorldId == homeWorldId)
@@ -129,62 +137,106 @@ public sealed class Plugin : IDalamudPlugin
         }
     }
 
-    private void TravelOut()
+    private void Travel(int targetWorldId, int currentWorldId, ulong contentId, bool isBack, string currentCharacterName)
     {
+        var title = isBack ? "超域返回" : "超域传送";
 
-    }
-
-    private void TravelBack(int homeWorldId, int currentWorldId, ulong contentId)
-    {
-        //return;
-        //var areas = DcTravelClient.QueryGroupListTravelTarget();
-        if (!DcTravelClient.IsValid)
+        if (LastErrorMessage != null)
         {
+            MessageBoxWindow.Show(WindowSystem, title, LastErrorMessage);
+            return;
+        }
+        if (DcTravelClient == null || !DcTravelClient.IsValid)
+        {
+            MessageBoxWindow.Show(WindowSystem, title, "无法连接超域API服务,请检查XL。");
             Log.Error("Can not connect to XL");
             return;
         }
-        var worldSheet = DataManager.GetExcelSheet<World>();
-        var homeWorld = worldSheet.GetRow((uint)homeWorldId);
-        var homeDcGroupName = homeWorld.DataCenter.Value.Name.ToString();
-        var currentWorld = worldSheet.GetRow((uint)currentWorldId);
-        var currentDcGroupName = currentWorld.DataCenter.Value.Name.ToString();
-        var currentGroup = DcTravelClient.CachedAreas.First(x => x.AreaName == currentDcGroupName).GroupList.First(x => x.GroupCode == currentWorld.InternalName.ToString());
-        MigrationOrder order = null;
 
         Task.Run(async () =>
         {
-            order = GetTravelingOrder(contentId);
-            Log.Information($"Find back order: {order.OrderId}");
-            if (order != null)
+            try
             {
-                await Framework.RunOnFrameworkThread(GameFunctions.ReturnToTitle);
-                //return;
-                //GameFunctions.ReturnToTitle();
-                var orderId = await DcTravelClient.TravelBack(order.OrderId, currentGroup.GroupId, currentGroup.GroupCode, currentGroup.GroupName);
-                Log.Information($"Get an order: {orderId}");
-                WaitingWindow.Open();
-                //WaitingWindow.Status = 
-                while (true)
+                var worldSheet = DataManager.GetExcelSheet<World>();
+                var currentWorld = worldSheet.GetRow((uint)currentWorldId);
+                var currentDcGroupName = currentWorld.DataCenter.Value.Name.ToString();
+                var currentGroup = DcTravelClient.CachedAreas.First(x => x.AreaName == currentDcGroupName).GroupList.First(x => x.GroupCode == currentWorld.InternalName.ToString());
+                var orderId = string.Empty;
+                var targetDcGroupName = string.Empty;
+                if (isBack)
                 {
-                    var status = await DcTravelClient.QueryOrderStatus(orderId);
-                    Log.Information($"Current status:{status}");
-                    WaitingWindow.Status = status;
-                    if (!(status == MigrationStatus.InPrepare || status == MigrationStatus.InQueue))
-                    {
-                        break;
-                    }
-                    await Task.Delay(2000);
+                    var targetWorld = worldSheet.GetRow((uint)targetWorldId);
+                    targetDcGroupName = targetWorld.DataCenter.Value.Name.ToString();
+                    MigrationOrder order = null;
+                    order = GetTravelingOrder(contentId);
+                    Log.Information($"Find back order: {order.OrderId}");
+                    await Framework.RunOnFrameworkThread(GameFunctions.ReturnToTitle);
+                    orderId = await DcTravelClient.TravelBack(order.OrderId, currentGroup.GroupId, currentGroup.GroupCode, currentGroup.GroupName);
+                    Log.Information($"Get an order: {orderId}");
                 }
-                WaitingWindow.IsOpen = false;
-                var targetArea = this.sdoAreas.FirstOrDefault(x => x.AreaName == homeDcGroupName);
-                GameFunctions.ChangeGameServer(targetArea.AreaLobby, targetArea.AreaConfigUpload, targetArea.AreaGm);
-                GameFunctions.RefreshGameServer();
+                else
+                {
+                    var areas = await DcTravelClient.QueryGroupListTravelTarget(7, 5);
+                    var selectWorld = await WorldSelectorWindows.OpenTravelWindow(false, true, false, areas, currentDcGroupName, currentWorld.InternalName.ToString());
+                    var chara = new Character() { ContentId = contentId.ToString(), Name = currentCharacterName };
+                    Log.Info($"选择传送:{selectWorld.Target.AreaName}:{selectWorld.Target.GroupName}");
+                    targetDcGroupName = selectWorld.Target.AreaName;
+                    //return;
+                    var waitTime = await DcTravelClient.QueryTravelQueueTime(selectWorld.Target.AreaId, selectWorld.Target.GroupId);
+                    Log.Info($"预计花费时间:{waitTime}");
+                    var costMsgBox = await MessageBoxWindow.Show(WindowSystem, title, $"预计时间:{waitTime}", MessageBoxType.YesNo);
+                    if (costMsgBox == MessageBoxResult.Yes)
+                    {
+                        await Framework.RunOnFrameworkThread(GameFunctions.ReturnToTitle);
+                        orderId = await DcTravelClient.TravelOrder(selectWorld.Target, selectWorld.Source, chara);
+                        Log.Information($"Get an order: {orderId}");
+                    }
+                    else
+                    {
+                        Log.Info($"取消咯");
+                        return;
+                    }
+                }
+                await WaitingForOrder(orderId);
+                ChangeToSdoArea(targetDcGroupName);
                 var newTicket = await DcTravelClient.RefreshGameSessionId();
                 GameFunctions.ChangeDevTestSid(newTicket);
-                //WorldSelectorWindows.OpenTravelWindow(true, false, true, DcTravelClient.CachedAreas, currentDcGroupName, currentWorld.InternalName.ToString(), homeDcGroupName, homeWorld.InternalName.ToString());
+            }
+            catch (Exception ex)
+            {
+                await MessageBoxWindow.Show(WindowSystem, title, $"{title}失败:\n{ex}");
+                Log.Error(ex.ToString() );
+            }
+            finally
+            {
+                WaitingWindow.IsOpen = false;
             }
         });
     }
+
+    public async Task WaitingForOrder(string orderId)
+    {
+        WaitingWindow.Open();
+
+        while (true)
+        {
+            var status = await DcTravelClient.QueryOrderStatus(orderId);
+            Log.Information($"Current status:{status}");
+            WaitingWindow.Status = status;
+            if (!(status == MigrationStatus.InPrepare || status == MigrationStatus.InQueue))
+            {
+                break;
+            }
+            await Task.Delay(2000);
+        }
+    }
+    public void ChangeToSdoArea(string groupName)
+    {
+        var targetArea = this.sdoAreas.FirstOrDefault(x => x.AreaName == groupName);
+        GameFunctions.ChangeGameServer(targetArea.AreaLobby, targetArea.AreaConfigUpload, targetArea.AreaGm);
+        GameFunctions.RefreshGameServer();
+    }
+
     private MigrationOrder GetTravelingOrder(ulong contentId)
     {
         var contentIdStr = contentId.ToString();
@@ -201,7 +253,7 @@ public sealed class Plugin : IDalamudPlugin
                 if (currentPageNum > maxPageNum)
                 {
                     Log.Error($"Fail to find order for {contentId}");
-                    return null;
+                    throw new Exception("无法找到返回订单!");
                 }
             }
             else
