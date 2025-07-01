@@ -25,7 +25,7 @@ namespace DcTraveler.Windows
     }
     internal class WorldSelectorWindows : Window, IDisposable
     {
-        public WorldSelectorWindows() : base("超域传送", ImGuiWindowFlags.NoCollapse | ImGuiWindowFlags.AlwaysAutoResize | ImGuiWindowFlags.NoSavedSettings)
+        public WorldSelectorWindows() : base("超域传送", ImGuiWindowFlags.NoCollapse | ImGuiWindowFlags.AlwaysAutoResize)
         {
         }
 

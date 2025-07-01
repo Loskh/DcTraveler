@@ -64,11 +64,16 @@ namespace DcTraveler
     {
         Failed = -1,
         InPrepare = 0,
-        UnkownCompleted =3,
+        UnkownCompleted = 3,
         InQueue = 4,
         Completed = 5,
     }
-    public enum OrderStatus
+    public class OrderSatus
+    {
+        public MigrationStatus Status { get; set; }
+        public string CheckMessage { get; set; }
+    }
+    public enum TravelStatus
     {
         Failed,
         Arrival,
@@ -97,7 +102,7 @@ namespace DcTraveler
         [JsonPropertyName("groupName")]
         public string GroupName { get; set; }
         [JsonPropertyName("status")]
-        public OrderStatus Status { get; set; }
+        public TravelStatus Status { get; set; }
         [JsonPropertyName("createTime")]
         public string CreateTime { get; set; }
     }
@@ -188,9 +193,9 @@ namespace DcTraveler
             return await RequestApi<string>(new object[] { targetGroup, sourceGroup, character });
         }
 
-        public async Task<MigrationStatus> QueryOrderStatus(string orderId)
+        public async Task<OrderSatus> QueryOrderStatus(string orderId)
         {
-            return await RequestApi<MigrationStatus>(new object[] { orderId });
+            return await RequestApi<OrderSatus>(new object[] { orderId });
         }
 
         public async Task<MigrationOrders> QueryMigrationOrders(int pageIndex = 1)
