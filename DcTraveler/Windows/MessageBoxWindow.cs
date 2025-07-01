@@ -3,6 +3,7 @@ using ImGuiNET;
 using Serilog;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Numerics;
 using System.Text;
@@ -89,6 +90,8 @@ namespace DcTraveler.Windows
         /// </summary>
         public MessageBoxResult Result;
 
+        public bool ShowWebsite = false;
+
         /// <summary>
         /// Gets or sets optional user data associated with the message box.
         /// </summary>
@@ -117,10 +120,10 @@ namespace DcTraveler.Windows
             Userdata = userdata;
             Callback = callback;
             WindowSystem = windowSystem;
-            ShowCloseButton= false;
+            ShowCloseButton = false;
             AllowPinning = false;
             AllowClickthrough = false;
-            messageTaskCompletionSource= new(TaskCreationOptions.RunContinuationsAsynchronously);
+            messageTaskCompletionSource = new(TaskCreationOptions.RunContinuationsAsynchronously);
         }
 
         /// <summary>
@@ -131,10 +134,11 @@ namespace DcTraveler.Windows
         /// <param name="type">The type of the message box.</param>
         /// <param name="parent">Optional parent element for centering.</param>
         /// <returns>The created message box instance.</returns>
-        public static Task<MessageBoxResult> Show(WindowSystem WindowSystem, string title, string message, MessageBoxType type = MessageBoxType.Ok)
+        public static Task<MessageBoxResult> Show(WindowSystem WindowSystem, string title, string message, MessageBoxType type = MessageBoxType.Ok, bool showWebsite=false)
         {
             var guid = Guid.NewGuid();
             MessageBoxWindow box = new(WindowSystem, $"{title}##{guid}", message, type);
+            box.ShowWebsite = showWebsite;
             box.IsOpen = true;
             WindowSystem.AddWindow(box);
             return box.messageTaskCompletionSource.Task;
@@ -165,6 +169,10 @@ namespace DcTraveler.Windows
             ImGui.SetNextWindowPos(center, ImGuiCond.Appearing, new(0.5f));
         }
 
+        private static void OpenUrl(string url)
+        {
+            Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
+        }
         //private bool IsOpen = true;
         public override void Draw()
         {
@@ -243,6 +251,19 @@ namespace DcTraveler.Windows
                         Result = MessageBoxResult.Cancel;
                     }
                     break;
+            }
+            if (ShowWebsite)
+            {
+                ImGui.Text("似乎出错了,请去官方页面收到处理。");
+                if (ImGui.Button("打开[超域传送]"))
+                {
+                    OpenUrl("https://ff14bjz.sdo.com/RegionKanTelepo?");
+                }
+                ImGui.SameLine();
+                if (ImGui.Button("打开[超域返回]"))
+                {
+                    OpenUrl("https://ff14bjz.sdo.com/orderList");
+                }
             }
             if (!IsOpen)
             {

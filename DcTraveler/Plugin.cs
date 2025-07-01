@@ -3,16 +3,23 @@ using Dalamud.Game;
 using Dalamud.Game.Addon.Lifecycle;
 using Dalamud.Game.Command;
 using Dalamud.Game.Gui.ContextMenu;
+using Dalamud.Hooking;
+using Dalamud.Interface;
 using Dalamud.Interface.ManagedFontAtlas;
+using Dalamud.Interface.Textures;
 using Dalamud.Interface.Windowing;
 using Dalamud.IoC;
 using Dalamud.Plugin;
 using Dalamud.Plugin.Services;
 using DcTraveler.Windows;
+using FFXIVClientStructs.FFXIV.Client.UI;
 using FFXIVClientStructs.FFXIV.Client.UI.Agent;
+using FFXIVClientStructs.FFXIV.Component.GUI;
 using Lumina.Excel.Sheets;
 using System;
+using System.Diagnostics;
 using System.Linq;
+using System.Xml.Linq;
 using Task = System.Threading.Tasks.Task;
 namespace DcTraveler;
 
@@ -30,7 +37,9 @@ public sealed class Plugin : IDalamudPlugin
     [PluginService] internal static ISigScanner SigScanner { get; private set; } = null!;
     [PluginService] internal static IFramework Framework { get; private set; } = null!;
     [PluginService] internal static IDalamudPluginInterface DalamudPluginInterface { get; private set; } = null!;
-    private const string CommandName = "/pmycommand";
+    [PluginService] internal static ITitleScreenMenu TitleScreenMenu { get; private set; } = null!;
+    [PluginService] internal static IGameInteropProvider GameInteropProvider { get; set; }
+    //private const string CommandName = "/pmycommand";
 
     public Configuration Configuration { get; init; }
 
@@ -39,41 +48,43 @@ public sealed class Plugin : IDalamudPlugin
     //private MainWindow MainWindow { get; init; }
     private WorldSelectorWindows WorldSelectorWindows { get; init; }
     private WaitingWindow WaitingWindow { get; init; }
-    private static DcTravelClient? DcTravelClient = null;
+    private DcGroupSelctorWindow DcGroupSelctorWindow { get; init; }
+
+    internal static DcTravelClient? DcTravelClient = null;
     internal SdoArea[]? sdoAreas = null;
     internal static IFontHandle Font { get; private set; } = null!;
 
     internal GameFunctions GameFunctions { get; private set; }
     internal string? LastErrorMessage { get; private set; }
+    internal TitleScreenButton TitleScreenButton { get; private set; }
     public Plugin()
     {
         Configuration = PluginInterface.GetPluginConfig() as Configuration ?? new Configuration();
         SetupFont();
-        //MainWindow = new MainWindow(this, goatImagePath);
+        //MainWindow = new MainWindow(this);
         WorldSelectorWindows = new WorldSelectorWindows();
         WaitingWindow = new WaitingWindow();
+        DcGroupSelctorWindow = new DcGroupSelctorWindow(this);
         //WindowSystem.AddWindow(MainWindow);
         WindowSystem.AddWindow(WorldSelectorWindows);
         WindowSystem.AddWindow(WaitingWindow);
+        WindowSystem.AddWindow(DcGroupSelctorWindow);
+        PluginInterface.UiBuilder.Draw += DrawUI;
         //CommandManager.AddHandler(CommandName, new CommandInfo(OnCommand)
         //{
         //    HelpMessage = "A useful message to display in /xlhelp"
         //});
+        this.TitleScreenButton = new TitleScreenButton(DalamudPluginInterface, TitleScreenMenu, TextureProvider, this);
 
-        PluginInterface.UiBuilder.Draw += DrawUI;
-
-
-#if DEBUG
         ContextMenu.OnMenuOpened += this.OnContextMenuOpened;
-#else
-        AddonLifecycle.RegisterListener(AddonEvent.PreFinalize, "_CharaSelectListMenu", (type, args) => { ContextMenu.OnMenuOpened -= this.OnContextMenuOpened; });
-        AddonLifecycle.RegisterListener(AddonEvent.PostSetup, "_CharaSelectListMenu", (type, args) => { ContextMenu.OnMenuOpened += this.OnContextMenuOpened; });
-#endif
         //WaitingWindow.Open();
         GameFunctions = new GameFunctions();
         try
         {
-            Task.Run(() => { this.sdoAreas = SdoArea.Get().Result; });
+            Task.Run(() =>
+            {
+                this.sdoAreas = SdoArea.Get().Result;
+            });
             var port = GameFunctions.GetXLDcTravelerPort();
             DcTravelClient = new DcTravelClient(port);
         }
@@ -101,9 +112,18 @@ public sealed class Plugin : IDalamudPlugin
         });
     }
 
+    internal void OpenDcSelectWindow()
+    {
+        DcGroupSelctorWindow.Open(sdoAreas);
+    }
+
     private unsafe void OnContextMenuOpened(IMenuOpenedArgs args)
     {
         if (args.AddonPtr != 0 || args.MenuType != ContextMenuType.Default)
+        {
+            return;
+        }
+        if (GameGui.GetAddonByName("_CharaSelectListMenu", 1) == 0)
         {
             return;
         }
@@ -199,13 +219,11 @@ public sealed class Plugin : IDalamudPlugin
                     }
                 }
                 await WaitingForOrder(orderId);
-                ChangeToSdoArea(targetDcGroupName);
-                var newTicket = await DcTravelClient.RefreshGameSessionId();
-                GameFunctions.ChangeDevTestSid(newTicket);
+                await SelectDcAndLogin(targetDcGroupName);
             }
             catch (Exception ex)
             {
-                await MessageBoxWindow.Show(WindowSystem, title, $"{title}失败:\n{ex}");
+                await MessageBoxWindow.Show(WindowSystem, title, $"{title}失败:\n{ex}", showWebsite: true);
                 Log.Error(ex.ToString());
             }
             finally
@@ -218,10 +236,10 @@ public sealed class Plugin : IDalamudPlugin
     public async Task WaitingForOrder(string orderId)
     {
         WaitingWindow.Open();
-
+        var status = MigrationStatus.Failed;
         while (true)
         {
-            var status = await DcTravelClient.QueryOrderStatus(orderId);
+            status = await DcTravelClient.QueryOrderStatus(orderId);
             Log.Information($"Current status:{status}");
             WaitingWindow.Status = status;
             if (!(status == MigrationStatus.InPrepare || status == MigrationStatus.InQueue))
@@ -229,6 +247,10 @@ public sealed class Plugin : IDalamudPlugin
                 break;
             }
             await Task.Delay(2000);
+        }
+        if (status == MigrationStatus.Failed)
+        {
+            throw new Exception("传送失败");
         }
     }
     public void ChangeToSdoArea(string groupName)
@@ -263,17 +285,35 @@ public sealed class Plugin : IDalamudPlugin
             }
         }
     }
+    public unsafe void LoginInGame()
+    {
+        var ptr = GameGui.GetAddonByName("_TitleMenu", 1);
+        if (ptr == 0)
+            return;
+        var atkUnitBase = (AtkUnitBase*)ptr;
+        var loginGameButton = atkUnitBase->GetComponentButtonById(4);
+        var loginGameButtonEvent = loginGameButton->AtkResNode->AtkEventManager.Event;
+        Framework.RunOnFrameworkThread(() => atkUnitBase->ReceiveEvent(AtkEventType.ButtonClick, 1, loginGameButtonEvent));
+    }
+
+    public async Task SelectDcAndLogin(string name)
+    {
+        var newTicket = await DcTravelClient!.RefreshGameSessionId();
+        ChangeToSdoArea(name);
+        GameFunctions.ChangeDevTestSid(newTicket);
+        LoginInGame();
+    }
+
     public void Dispose()
     {
         WindowSystem.RemoveAllWindows();
 
-#if DEBUG
         ContextMenu.OnMenuOpened -= this.OnContextMenuOpened;
-#endif
+        this.TitleScreenButton?.Dispose();
+
         WorldSelectorWindows.Dispose();
         //MainWindow.Dispose();
-
-        CommandManager.RemoveHandler(CommandName);
+        //CommandManager.RemoveHandler(CommandName);
     }
 
     private void OnCommand(string command, string args)

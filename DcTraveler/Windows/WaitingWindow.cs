@@ -1,13 +1,8 @@
 using Dalamud.Interface.Windowing;
-using FFXIVClientStructs.FFXIV.Client.UI;
 using ImGuiNET;
-using Serilog;
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Numerics;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace DcTraveler.Windows
 {
@@ -22,7 +17,7 @@ namespace DcTraveler.Windows
             {MigrationStatus.Completed,"传送完成" },
             {MigrationStatus.UnkownCompleted,"传送完成" },
         };
-        public WaitingWindow() : base("WaitingOrder", ImGuiWindowFlags.NoResize | ImGuiWindowFlags.NoMove | ImGuiWindowFlags.NoTitleBar|ImGuiWindowFlags.AlwaysAutoResize|ImGuiWindowFlags.NoSavedSettings)
+        public WaitingWindow() : base("WaitingOrder", ImGuiWindowFlags.NoResize | ImGuiWindowFlags.NoMove | ImGuiWindowFlags.NoTitleBar | ImGuiWindowFlags.AlwaysAutoResize | ImGuiWindowFlags.NoSavedSettings)
         {
             //Position = ImGui.GetScrr
         }
