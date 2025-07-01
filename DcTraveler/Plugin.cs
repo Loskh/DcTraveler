@@ -12,7 +12,6 @@ using FFXIVClientStructs.FFXIV.Client.UI.Agent;
 using Lumina.Excel.Sheets;
 using System;
 using System.Linq;
-using System.Threading;
 using Task = System.Threading.Tasks.Task;
 namespace DcTraveler;
 
@@ -83,6 +82,7 @@ public sealed class Plugin : IDalamudPlugin
             Log.Error(ex.ToString());
         }
     }
+
 
     public static void SetupFont()
     {
