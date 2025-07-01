@@ -38,7 +38,7 @@ namespace DcTraveler.Windows
         private List<string[]> world = new();
         private int targetDcIndex = 0;
         private int targetWorldIndex = 0;
-        private List<Area> areas;
+        private  List<Area> areas = new();
 
         public override void PreDraw()
         {
@@ -105,7 +105,7 @@ namespace DcTraveler.Windows
             }
         }
         private TaskCompletionSource<SelectWorldResult>? selectWorldTaskCompletionSource;
-        public Task<SelectWorldResult> OpenTravelWindow(bool showSourceWorld, bool showTargetWorld, bool isBack, List<Area> areas, string currentDcName = null, string currentWorldCode = null, string targetDcName = null, string targetWorldCode = null)
+        public Task<SelectWorldResult> OpenTravelWindow(bool showSourceWorld, bool showTargetWorld, bool isBack, List<Area> areas, string? currentDcName = null, string? currentWorldCode = null, string? targetDcName = null, string? targetWorldCode = null)
         {
             this.selectWorldTaskCompletionSource = new(TaskCreationOptions.RunContinuationsAsynchronously);
             this.areas = areas;

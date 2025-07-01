@@ -1,5 +1,6 @@
 using Dalamud;
 using Dalamud.Game;
+using Dalamud.Game.Addon.Lifecycle;
 using Dalamud.Game.Command;
 using Dalamud.Game.Gui.ContextMenu;
 using Dalamud.Interface.ManagedFontAtlas;
@@ -35,15 +36,15 @@ public sealed class Plugin : IDalamudPlugin
 
     public readonly WindowSystem WindowSystem = new("DcTraveler");
     //private ConfigWindow ConfigWindow { get; init; }
-    private MainWindow MainWindow { get; init; }
+    //private MainWindow MainWindow { get; init; }
     private WorldSelectorWindows WorldSelectorWindows { get; init; }
     private WaitingWindow WaitingWindow { get; init; }
-    private static DcTravelClient DcTravelClient = null;
-    internal SdoArea[] sdoAreas = null;
-    internal static IFontHandle Font { get; private set; }
+    private static DcTravelClient? DcTravelClient = null;
+    internal SdoArea[]? sdoAreas = null;
+    internal static IFontHandle Font { get; private set; } = null!;
 
-    internal static GameFunctions GameFunctions { get; private set; }
-    internal string LastErrorMessage { get; private set; }
+    internal GameFunctions GameFunctions { get; private set; }
+    internal string? LastErrorMessage { get; private set; }
     public Plugin()
     {
         Configuration = PluginInterface.GetPluginConfig() as Configuration ?? new Configuration();
@@ -54,10 +55,10 @@ public sealed class Plugin : IDalamudPlugin
         //WindowSystem.AddWindow(MainWindow);
         WindowSystem.AddWindow(WorldSelectorWindows);
         WindowSystem.AddWindow(WaitingWindow);
-        CommandManager.AddHandler(CommandName, new CommandInfo(OnCommand)
-        {
-            HelpMessage = "A useful message to display in /xlhelp"
-        });
+        //CommandManager.AddHandler(CommandName, new CommandInfo(OnCommand)
+        //{
+        //    HelpMessage = "A useful message to display in /xlhelp"
+        //});
 
         PluginInterface.UiBuilder.Draw += DrawUI;
 
@@ -143,7 +144,7 @@ public sealed class Plugin : IDalamudPlugin
 
         if (LastErrorMessage != null)
         {
-            MessageBoxWindow.Show(WindowSystem, title, LastErrorMessage);
+            MessageBoxWindow.Show(WindowSystem, title, LastErrorMessage!);
             return;
         }
         if (DcTravelClient == null || !DcTravelClient.IsValid)
@@ -167,7 +168,7 @@ public sealed class Plugin : IDalamudPlugin
                 {
                     var targetWorld = worldSheet.GetRow((uint)targetWorldId);
                     targetDcGroupName = targetWorld.DataCenter.Value.Name.ToString();
-                    MigrationOrder order = null;
+                    MigrationOrder order;
                     order = GetTravelingOrder(contentId);
                     Log.Information($"Find back order: {order.OrderId}");
                     await Framework.RunOnFrameworkThread(GameFunctions.ReturnToTitle);
@@ -205,7 +206,7 @@ public sealed class Plugin : IDalamudPlugin
             catch (Exception ex)
             {
                 await MessageBoxWindow.Show(WindowSystem, title, $"{title}失败:\n{ex}");
-                Log.Error(ex.ToString() );
+                Log.Error(ex.ToString());
             }
             finally
             {
@@ -232,8 +233,8 @@ public sealed class Plugin : IDalamudPlugin
     }
     public void ChangeToSdoArea(string groupName)
     {
-        var targetArea = this.sdoAreas.FirstOrDefault(x => x.AreaName == groupName);
-        GameFunctions.ChangeGameServer(targetArea.AreaLobby, targetArea.AreaConfigUpload, targetArea.AreaGm);
+        var targetArea = this.sdoAreas!.FirstOrDefault(x => x.AreaName == groupName);
+        GameFunctions.ChangeGameServer(targetArea!.AreaLobby, targetArea!.AreaConfigUpload, targetArea!.AreaGm);
         GameFunctions.RefreshGameServer();
     }
 
@@ -244,7 +245,7 @@ public sealed class Plugin : IDalamudPlugin
         var currentPageNum = 1;
         while (true)
         {
-            var orders = DcTravelClient.QueryMigrationOrders(currentPageNum).Result;
+            var orders = DcTravelClient!.QueryMigrationOrders(currentPageNum).Result;
             var order = orders.Orders.First(x => x.Status == OrderStatus.Arrival && x.ContentId == contentIdStr);
             if (order == null)
             {
@@ -278,11 +279,11 @@ public sealed class Plugin : IDalamudPlugin
     private void OnCommand(string command, string args)
     {
         // in response to the slash command, just toggle the display status of our main ui
-        ToggleMainUI();
+        //ToggleMainUI();
     }
 
     private void DrawUI() => WindowSystem.Draw();
 
     //public void ToggleConfigUI() => ConfigWindow.Toggle();
-    public void ToggleMainUI() => MainWindow.Toggle();
+    //public void ToggleMainUI() => MainWindow.Toggle();
 }

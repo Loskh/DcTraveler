@@ -104,14 +104,14 @@ namespace DcTraveler
 
     public class RpcRequest
     {
-        public string Method { get; set; }
-        public object[] Params { get; set; }
+        public required string Method { get; set; }
+        public required object[] Params { get; set; }
     }
 
     public class RpcResponse
     {
-        public object Result { get; set; }
-        public string Error { get; set; }
+        public required object Result { get; set; }
+        public required string Error { get; set; }
     }
 
     internal class DcTravelClient
@@ -134,9 +134,9 @@ namespace DcTraveler
 
         //Response:{"Result":"GM017624122025063000313700001006","Error":null}
 
-        public async Task<T> RequestApi<T>(object[] objs = null, [CallerMemberName] string method = null)
+        public async Task<T> RequestApi<T>(object[] objs, [CallerMemberName] string? method = null)
         {
-            var rpcRequest = new RpcRequest { Method = method, Params = objs };
+            var rpcRequest = new RpcRequest { Method = method!, Params = objs };
             var jsonPayload = JsonSerializer.Serialize(rpcRequest);
             Log.Debug($"Request:{jsonPayload}");
             var request = new HttpRequestMessage(HttpMethod.Post, this.apiUrl) { Content = new StringContent(jsonPayload, Encoding.UTF8, "application/json") };
