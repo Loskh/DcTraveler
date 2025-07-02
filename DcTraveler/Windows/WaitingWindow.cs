@@ -9,14 +9,7 @@ namespace DcTraveler.Windows
     internal class WaitingWindow : Window, IDisposable
     {
         private DateTime openTime = DateTime.Now;
-        public MigrationStatus Status = MigrationStatus.InPrepare;
-        private Dictionary<MigrationStatus, string> statusText = new Dictionary<MigrationStatus, string>() {
-            {MigrationStatus.Failed,"传送失败" },
-            {MigrationStatus.InPrepare,"检查角色中..." },
-            {MigrationStatus.InQueue,"排队中..." },
-            {MigrationStatus.Completed,"传送完成" },
-            {MigrationStatus.UnkownCompleted,"传送完成" },
-        };
+        public int Status = 0;
         public WaitingWindow() : base("WaitingOrder", ImGuiWindowFlags.NoResize | ImGuiWindowFlags.NoMove | ImGuiWindowFlags.NoTitleBar | ImGuiWindowFlags.AlwaysAutoResize | ImGuiWindowFlags.NoSavedSettings)
         {
             //Position = ImGui.GetScrr
@@ -37,14 +30,20 @@ namespace DcTraveler.Windows
             ImGui.Text($"已等待时间:{DateTime.Now - openTime}");
             ImGui.Text("目前状态:");
             ImGui.SameLine();
-            ImGui.Text(this.statusText[this.Status]);
+            if (Status == 0 || Status == 1)
+            {
+                ImGui.Text("角色检查中");
+            }
+            else if (Status == 3 || Status == 4)
+            {
+                ImGui.Text("处理中");
+            }
             Plugin.Font.Pop();
         }
 
         public void Open()
         {
             this.IsOpen = true;
-            this.Status = MigrationStatus.InPrepare;
             this.openTime = DateTime.Now;
         }
         public void Dispose()

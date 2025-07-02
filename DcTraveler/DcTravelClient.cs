@@ -60,27 +60,17 @@ namespace DcTraveler
         [JsonPropertyName("groupCode")]
         public string GroupCode { get; set; }
     }
-    public enum MigrationStatus
-    {
-        Failed = -1,
-        InPrepare = 0,
-        UnkownCompleted = 3,
-        InQueue = 4,
-        Completed = 5,
-    }
     public class OrderSatus
     {
-        public MigrationStatus Status { get; set; }
+        // 5 成功
+        // 2 需要确认
+        // 0,1 检查中
+        // 3,4 处理中
+        // -1 预检查失败
+        // -5 传送失败
+        public int Status { get; set; }
         public string CheckMessage { get; set; }
-    }
-    public enum TravelStatus
-    {
-        Failed,
-        Arrival,
-        Completed,
-        Backing,
-        Backed,
-        Unknown
+        public string MigrationMessage { get; set; }
     }
 
     public class MigrationOrders
@@ -101,8 +91,6 @@ namespace DcTraveler
         public string GroupCode { get; set; }
         [JsonPropertyName("groupName")]
         public string GroupName { get; set; }
-        [JsonPropertyName("status")]
-        public TravelStatus Status { get; set; }
         [JsonPropertyName("createTime")]
         public string CreateTime { get; set; }
     }
@@ -119,10 +107,10 @@ namespace DcTraveler
         public required string Error { get; set; }
     }
 
-    internal class DcTravelClient
+    internal sealed class DcTravelClient
     {
         private string apiUrl = string.Empty;
-        public HttpClient httpClient { get; set; }
+        private HttpClient httpClient { get; set; }
         public List<Area> CachedAreas { get; set; }
         public bool IsValid = false;
         public DcTravelClient(int port, bool useEncrypt = true)
@@ -132,7 +120,7 @@ namespace DcTraveler
             this.httpClient = new HttpClient();
             Task.Run(() =>
             {
-                this.CachedAreas = this.QueryGroupListTravelSource().Result;
+                this.CachedAreas = this.QueryGroupListTravelSource().GetAwaiter().GetResult();
                 this.IsValid = true;
             });
         }
@@ -210,6 +198,11 @@ namespace DcTraveler
         public async Task<string> RefreshGameSessionId()
         {
             return await RequestApi<string>(new object[] { });
+        }
+
+        public async Task MigrationConfirmOrder(string orderId, bool confirmed)
+        {
+            await RequestApi<string>(new object[] { orderId, confirmed });
         }
     }
 }

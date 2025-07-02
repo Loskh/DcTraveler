@@ -38,7 +38,6 @@ public sealed class Plugin : IDalamudPlugin
     [PluginService] internal static IFramework Framework { get; private set; } = null!;
     [PluginService] internal static IDalamudPluginInterface DalamudPluginInterface { get; private set; } = null!;
     [PluginService] internal static ITitleScreenMenu TitleScreenMenu { get; private set; } = null!;
-    [PluginService] internal static IGameInteropProvider GameInteropProvider { get; set; }
     //private const string CommandName = "/pmycommand";
 
     public Configuration Configuration { get; init; }
@@ -242,15 +241,24 @@ public sealed class Plugin : IDalamudPlugin
             status = await DcTravelClient!.QueryOrderStatus(orderId);
             Log.Information($"Current status:{status.Status}");
             WaitingWindow.Status = status.Status;
-            if (!(status.Status == MigrationStatus.InPrepare || status.Status == MigrationStatus.InQueue))
+            if (status.Status == 5)
             {
-                break;
+                return;
+            }
+            else if (status.Status == 2)
+            {
+                var confirmResult = await MessageBoxWindow.Show(WindowSystem, "传送确认", "请确认传送", MessageBoxType.OkCancel);
+                await DcTravelClient.MigrationConfirmOrder(orderId, confirmResult == MessageBoxResult.Ok);
+                if (confirmResult != MessageBoxResult.Ok)
+                {
+                    return;
+                }
+            }
+            else if (status.Status < 0)
+            {
+                throw new Exception($"传送失败,{status.CheckMessage} {status.MigrationMessage}");
             }
             await Task.Delay(2000);
-        }
-        if (status.Status == MigrationStatus.Failed)
-        {
-            throw new Exception(status.CheckMessage);
         }
     }
     public void ChangeToSdoArea(string groupName)
@@ -268,7 +276,7 @@ public sealed class Plugin : IDalamudPlugin
         while (true)
         {
             var orders = DcTravelClient!.QueryMigrationOrders(currentPageNum).Result;
-            var order = orders.Orders.First(x => x.Status == TravelStatus.Arrival && x.ContentId == contentIdStr);
+            var order = orders.Orders.First(x=>x.ContentId == contentIdStr);
             if (order == null)
             {
                 maxPageNum = orders.TotalPageNum;
