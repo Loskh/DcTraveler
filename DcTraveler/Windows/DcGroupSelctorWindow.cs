@@ -63,7 +63,7 @@ namespace DcTraveler.Windows
                         Log.Error(ex.ToString());
                     }
                 });
-                this.IsOpen= false;
+                this.IsOpen = false;
             }
             ImGui.PopStyleColor(3);
             ImGui.EndChild();
@@ -71,7 +71,7 @@ namespace DcTraveler.Windows
 
         public override void Draw()
         {
-            if (this.sdoAreas == null || this.sdoAreas.Count() == 0)
+            if (Plugin.SdoAreas == null || Plugin.SdoAreas.Count() == 0)
             {
                 ImGui.Text("服务器信息加载失败");
                 return;
@@ -81,21 +81,16 @@ namespace DcTraveler.Windows
                 ImGui.Text("必须在标题画面打开");
                 return;
             }
-            float tableWidth = ImGui.GetContentRegionAvail().X / Plugin.DcTravelClient!.CachedAreas.Count() - 10;
-            foreach (var dc in Plugin.DcTravelClient?.CachedAreas)
+            float tableWidth = ImGui.GetContentRegionAvail().X / DcTravelClient.CachedAreas.Count() - 10;
+            foreach (var dc in DcTravelClient.CachedAreas)
             {
                 this.DrawDcGroup(dc, tableWidth);
                 ImGui.SameLine();
             }
         }
-        private SdoArea[] sdoAreas;
-        private TaskCompletionSource<string?> areaNameTaskCompletionSource;
-        public async Task<string?> Open(SdoArea[] areas)
+        public void Open()
         {
-            this.sdoAreas = areas;
             this.IsOpen = true;
-            this.areaNameTaskCompletionSource = new(TaskCreationOptions.RunContinuationsAsynchronously);
-            return await this.areaNameTaskCompletionSource.Task;
         }
 
         public void Dispose()

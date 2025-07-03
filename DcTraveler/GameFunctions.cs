@@ -5,6 +5,7 @@ using FFXIVClientStructs.FFXIV.Application.Network;
 using FFXIVClientStructs.FFXIV.Client.Graphics.Kernel;
 using FFXIVClientStructs.FFXIV.Client.System.Framework;
 using FFXIVClientStructs.FFXIV.Client.UI.Agent;
+using FFXIVClientStructs.FFXIV.Component.GUI;
 using Serilog;
 using System;
 using System.Collections.Generic;
@@ -95,23 +96,32 @@ namespace DcTraveler
             Log.Information($"Change Game host addresses:LobbyHost:{lobbyHost},SaveDataBankHost:{saveDataHost},GmHost:{gmServerHost}");
         }
 
-        public int GetXLDcTravelerPort()
+        public string GetGameArgument(string key)
         {
-            var port = 0;
+            if (!key.EndsWith("="))
+            {
+                key = key + "=";
+            }
             var gameWindow = GameWindow.Instance();
-            var key = "XL.DcTraveler=";
             for (var i = 0UL; i < gameWindow->ArgumentCount; i++)
             {
                 var arg = gameWindow->GetArgument(i);
                 if (arg.StartsWith(key, StringComparison.OrdinalIgnoreCase))
                 {
-                    int.TryParse(arg.Substring(key.Length), out port);
-                    break;
+                    return arg.Substring(key.Length);
                 }
             }
-            if (port == 0)
-                throw new Exception("Can not find port for XL DcTraveler");
-            return port;
+            throw new Exception($"未能从游戏参数中获取{key}");
+        }
+        public unsafe void LoginInGame()
+        {
+            var ptr = Plugin.GameGui.GetAddonByName("_TitleMenu", 1);
+            if (ptr == 0)
+                return;
+            var atkUnitBase = (AtkUnitBase*)ptr;
+            var loginGameButton = atkUnitBase->GetComponentButtonById(4);
+            var loginGameButtonEvent = loginGameButton->AtkResNode->AtkEventManager.Event;
+            Plugin.Framework.RunOnFrameworkThread(() => atkUnitBase->ReceiveEvent(AtkEventType.ButtonClick, 1, loginGameButtonEvent));
         }
     }
 }

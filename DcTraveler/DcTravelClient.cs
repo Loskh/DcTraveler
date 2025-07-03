@@ -111,8 +111,8 @@ namespace DcTraveler
     {
         private string apiUrl = string.Empty;
         private HttpClient httpClient { get; set; }
-        public List<Area> CachedAreas { get; set; }
-        public bool IsValid = false;
+        public static List<Area> CachedAreas { get; set; } = new List<Area>();
+        public static bool IsValid = false;
         public DcTravelClient(int port, bool useEncrypt = true)
         {
             this.apiUrl = $"http://127.0.0.1:{port}/dctravel/";
@@ -120,8 +120,8 @@ namespace DcTraveler
             this.httpClient = new HttpClient();
             Task.Run(() =>
             {
-                this.CachedAreas = this.QueryGroupListTravelSource().GetAwaiter().GetResult();
-                this.IsValid = true;
+                CachedAreas = this.QueryGroupListTravelSource().GetAwaiter().GetResult();
+                IsValid = true;
             });
         }
 
