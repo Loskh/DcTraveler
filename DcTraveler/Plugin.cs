@@ -251,11 +251,13 @@ public sealed class Plugin : IDalamudPlugin
                 await DcTravelClient.MigrationConfirmOrder(orderId, confirmResult == MessageBoxResult.Ok);
                 if (confirmResult != MessageBoxResult.Ok)
                 {
+                    WaitingWindow.IsOpen = false;
                     return;
                 }
             }
             else if (status.Status < 0)
             {
+                WaitingWindow.IsOpen = false;
                 throw new Exception($"传送失败,{status.CheckMessage} {status.MigrationMessage}");
             }
             await Task.Delay(2000);
