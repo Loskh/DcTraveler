@@ -38,7 +38,7 @@ namespace DcTraveler.Windows
         private List<string[]> world = new();
         private int targetDcIndex = 0;
         private int targetWorldIndex = 0;
-        private  List<Area> areas = new();
+        private List<Area> areas = new();
 
         public override void PreDraw()
         {
@@ -61,7 +61,7 @@ namespace DcTraveler.Windows
                 ImGui.TableNextColumn();
                 ImGui.ListBox("##CurrentDc", ref currentDcIndex, dc, dc.Length, 4);
                 ImGui.TableNextColumn();
-                ImGui.ListBox("##CurrentServer", ref currentWorldIndex, world[currentDcIndex], world[targetDcIndex].Length, 7);
+                ImGui.ListBox("##CurrentServer", ref currentWorldIndex, world[currentDcIndex], world[currentDcIndex].Length, 7);
                 ImGui.EndTable();
             }
 
@@ -87,9 +87,10 @@ namespace DcTraveler.Windows
             if (ImGui.Button(isBack ? "返回" : "传送"))
             {
                 this.selectWorldTaskCompletionSource?.SetResult(
-                    new SelectWorldResult() {
-                        Source = areas[currentDcIndex].GroupList[currentWorldIndex], 
-                        Target = areas[targetDcIndex].GroupList[targetWorldIndex] 
+                    new SelectWorldResult()
+                    {
+                        Source = areas[currentDcIndex].GroupList[currentWorldIndex],
+                        Target = areas[targetDcIndex].GroupList[targetWorldIndex]
                     });
                 this.IsOpen = false;
             }
@@ -112,6 +113,10 @@ namespace DcTraveler.Windows
             this.showSourceWorld = showSourceWorld;
             this.showTargetWorld = showTargetWorld;
             this.isBack = isBack;
+            this.currentDcIndex = 0;
+            this.currentWorldIndex = 0;
+            this.targetDcIndex = 0;
+            this.targetWorldIndex = 0;
             this.dc = new string[areas.Count];
             for (int i = 0; i < areas.Count; i++)
             {
@@ -123,11 +128,11 @@ namespace DcTraveler.Windows
                     this.targetDcIndex = i;
                 for (int j = 0; j < areas[i].GroupList.Count; j++)
                 {
+                    this.world[i][j] = areas[i].GroupList[j].GroupName;
                     if (currentDcName == areas[i].AreaName && areas[i].GroupList[j].GroupCode == currentWorldCode)
                         this.currentWorldIndex = j;
                     else if (targetDcName == areas[i].AreaName && areas[i].GroupList[j].GroupCode == targetWorldCode)
                         this.targetWorldIndex = j;
-                    this.world[i][j] = areas[i].GroupList[j].GroupName;
                 }
             }
             this.IsOpen = true;

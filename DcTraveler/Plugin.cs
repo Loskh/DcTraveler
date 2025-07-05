@@ -129,13 +129,13 @@ public sealed class Plugin : IDalamudPlugin
         var currentWorldId = currentCharacterEntry->CurrentWorldId;
         var homeWorldId = currentCharacterEntry->HomeWorldId;
         var currentCharacterName = currentCharacterEntry->NameString;
-        var isDcTravling = currentCharacterEntry->LoginFlags == CharaSelectCharacterEntryLoginFlags.DCTraveling || currentCharacterEntry->LoginFlags == CharaSelectCharacterEntryLoginFlags.DCTraveling;
+        var isDcTravling = currentCharacterEntry->LoginFlags == CharaSelectCharacterEntryLoginFlags.Unk32 || currentCharacterEntry->LoginFlags == CharaSelectCharacterEntryLoginFlags.DCTraveling;
         if (isDcTravling)
         {
             args.AddMenuItem(new MenuItem
             {
                 Name = "超域返回",
-                OnClicked = (clickedArgs) => Travel(homeWorldId, currentWorldId, selectedCharacterContentId, true, currentCharacterName),
+                OnClicked = (clickedArgs) => Travel(homeWorldId, currentWorldId, selectedCharacterContentId, true, (currentCharacterEntry->LoginFlags == CharaSelectCharacterEntryLoginFlags.Unk32), currentCharacterName),
                 Prefix = Dalamud.Game.Text.SeIconChar.CrossWorld,
                 PrefixColor = 48,
                 IsEnabled = true
@@ -146,7 +146,7 @@ public sealed class Plugin : IDalamudPlugin
             args.AddMenuItem(new MenuItem
             {
                 Name = "超域传送",
-                OnClicked = (clickedArgs) => Travel(0, currentWorldId, selectedCharacterContentId, false, currentCharacterName),
+                OnClicked = (clickedArgs) => Travel(0, currentWorldId, selectedCharacterContentId, false, false, currentCharacterName),
                 Prefix = Dalamud.Game.Text.SeIconChar.CrossWorld,
                 PrefixColor = 48,
                 IsEnabled = (currentWorldId == homeWorldId)
@@ -154,7 +154,7 @@ public sealed class Plugin : IDalamudPlugin
         }
     }
 
-    private void Travel(int targetWorldId, int currentWorldId, ulong contentId, bool isBack, string currentCharacterName)
+    private void Travel(int targetWorldId, int currentWorldId, ulong contentId, bool isBack, bool needSelectCurrentWorld, string currentCharacterName)
     {
         var title = isBack ? "超域返回" : "超域传送";
 
@@ -177,13 +177,23 @@ public sealed class Plugin : IDalamudPlugin
                 var worldSheet = DataManager.GetExcelSheet<World>();
                 var currentWorld = worldSheet.GetRow((uint)currentWorldId);
                 var currentDcGroupName = currentWorld.DataCenter.Value.Name.ToString();
-                var currentGroup = DcTravelClient.CachedAreas.First(x => x.AreaName == currentDcGroupName).GroupList.First(x => x.GroupCode == currentWorld.InternalName.ToString());
                 var orderId = string.Empty;
                 var targetDcGroupName = string.Empty;
                 if (isBack)
                 {
                     var targetWorld = worldSheet.GetRow((uint)targetWorldId);
                     targetDcGroupName = targetWorld.DataCenter.Value.Name.ToString();
+                    var currentGroup = DcTravelClient.CachedAreas.First(x => x.AreaName == currentDcGroupName).GroupList.First(x => x.GroupCode == currentWorld.InternalName.ToString());
+                    if (needSelectCurrentWorld)
+                    {
+                        var selectWorld = await WorldSelectorWindows.OpenTravelWindow(true, false, true, DcTravelClient.CachedAreas, currentDcGroupName, currentGroup.GroupCode, targetDcGroupName, currentWorld.Name.ToString());
+                        if (selectWorld == null)
+                        {
+                            return;
+                        }
+                        currentGroup = selectWorld.Source;
+                    }
+                    Log.Information($"正在返回:{currentWorld.Name}@{currentDcGroupName} -> {targetWorld.Name}@{targetDcGroupName}");
                     MigrationOrder order;
                     order = GetTravelingOrder(contentId);
                     Log.Information($"Find back order: {order.OrderId}");
@@ -196,8 +206,8 @@ public sealed class Plugin : IDalamudPlugin
                     var areas = await DcTravelClient.QueryGroupListTravelTarget(7, 5);
                     var selectWorld = await WorldSelectorWindows.OpenTravelWindow(false, true, false, areas, currentDcGroupName, currentWorld.InternalName.ToString());
                     var chara = new Character() { ContentId = contentId.ToString(), Name = currentCharacterName };
-                    Log.Info($"选择传送:{selectWorld.Target.AreaName}:{selectWorld.Target.GroupName}");
                     targetDcGroupName = selectWorld.Target.AreaName;
+                    Log.Information($"正在传送:{currentWorld.Name}@{currentDcGroupName} -> {selectWorld.Target.GroupName}@{targetDcGroupName}");
                     var waitTime = await DcTravelClient.QueryTravelQueueTime(selectWorld.Target.AreaId, selectWorld.Target.GroupId);
                     Log.Info($"预计花费时间:{waitTime}");
                     var costMsgBox = await MessageBoxWindow.Show(WindowSystem, title, $"预计时间:{waitTime}", MessageBoxType.YesNo);
@@ -266,7 +276,7 @@ public sealed class Plugin : IDalamudPlugin
         while (true)
         {
             var orders = DcTravelClient!.QueryMigrationOrders(currentPageNum).Result;
-            var order = orders.Orders.First(x=>x.ContentId == contentIdStr);
+            var order = orders.Orders.First(x => x.ContentId == contentIdStr);
             if (order == null)
             {
                 maxPageNum = orders.TotalPageNum;
