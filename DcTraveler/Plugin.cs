@@ -276,7 +276,7 @@ public sealed class Plugin : IDalamudPlugin
         while (true)
         {
             var orders = DcTravelClient!.QueryMigrationOrders(currentPageNum).Result;
-            var order = orders.Orders.First(x => x.ContentId == contentIdStr);
+            var order = orders.Orders.FirstOrDefault(x => x.ContentId == contentIdStr);
             if (order == null)
             {
                 maxPageNum = orders.TotalPageNum;
