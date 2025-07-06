@@ -1,20 +1,27 @@
 using Dalamud;
 using Dalamud.Game;
 using Dalamud.Game.Gui.ContextMenu;
+using Dalamud.Hooking;
 using Dalamud.Interface.ManagedFontAtlas;
 using Dalamud.Interface.Windowing;
 using Dalamud.IoC;
 using Dalamud.Plugin;
 using Dalamud.Plugin.Services;
+using DcTraveler.GameUi;
 using DcTraveler.Windows;
+using FFXIVClientStructs.FFXIV.Client.UI;
 using FFXIVClientStructs.FFXIV.Client.UI.Agent;
 using FFXIVClientStructs.FFXIV.Component.GUI;
 using Lumina.Excel.Sheets;
 using Newtonsoft.Json;
 using System;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Text;
+using System.Windows.Markup;
+using static FFXIVClientStructs.FFXIV.Client.UI.AddonRelicNoteBook;
 using Task = System.Threading.Tasks.Task;
+using ValueType = FFXIVClientStructs.FFXIV.Component.GUI.ValueType;
 namespace DcTraveler;
 
 public sealed class Plugin : IDalamudPlugin
@@ -32,6 +39,7 @@ public sealed class Plugin : IDalamudPlugin
     [PluginService] internal static IFramework Framework { get; private set; } = null!;
     [PluginService] internal static IDalamudPluginInterface DalamudPluginInterface { get; private set; } = null!;
     [PluginService] internal static ITitleScreenMenu TitleScreenMenu { get; private set; } = null!;
+    [PluginService] internal static IGameInteropProvider GameInteropProvider { get; private set; } = null!;
     //private const string CommandName = "/pmycommand";
 
     public Configuration Configuration { get; init; }
@@ -40,38 +48,33 @@ public sealed class Plugin : IDalamudPlugin
     //private ConfigWindow ConfigWindow { get; init; }
     //private MainWindow MainWindow { get; init; }
     private WorldSelectorWindows WorldSelectorWindows { get; init; }
-    private WaitingWindow WaitingWindow { get; init; }
+    //private WaitingWindow WaitingWindow { get; init; }
     private DcGroupSelctorWindow DcGroupSelctorWindow { get; init; }
 
     internal DcTravelClient? DcTravelClient = null;
     internal static SdoArea[] SdoAreas = null!;
     internal static IFontHandle Font { get; private set; } = null!;
-
-    internal GameFunctions GameFunctions { get; private set; }
     internal string? InitException { get; private set; }
     internal TitleScreenButton TitleScreenButton { get; private set; }
-    public Plugin()
+    public unsafe Plugin()
     {
         Configuration = PluginInterface.GetPluginConfig() as Configuration ?? new Configuration();
         SetupFont();
+
         //MainWindow = new MainWindow(this);
-        WorldSelectorWindows = new WorldSelectorWindows();
-        WaitingWindow = new WaitingWindow();
-        DcGroupSelctorWindow = new DcGroupSelctorWindow(this);
         //WindowSystem.AddWindow(MainWindow);
+
+        WorldSelectorWindows = new WorldSelectorWindows();
+        //WaitingWindow = new WaitingWindow();
+        DcGroupSelctorWindow = new DcGroupSelctorWindow(this);
+
         WindowSystem.AddWindow(WorldSelectorWindows);
-        WindowSystem.AddWindow(WaitingWindow);
+        //WindowSystem.AddWindow(WaitingWindow);
         WindowSystem.AddWindow(DcGroupSelctorWindow);
         PluginInterface.UiBuilder.Draw += DrawUI;
-        //CommandManager.AddHandler(CommandName, new CommandInfo(OnCommand)
-        //{
-        //    HelpMessage = "A useful message to display in /xlhelp"
-        //});
         this.TitleScreenButton = new TitleScreenButton(DalamudPluginInterface, TitleScreenMenu, TextureProvider, this);
 
         ContextMenu.OnMenuOpened += this.OnContextMenuOpened;
-        //WaitingWindow.Open();
-        GameFunctions = new GameFunctions();
         var port = 0;
         try
         {
@@ -89,8 +92,8 @@ public sealed class Plugin : IDalamudPlugin
             InitException = ex.Message;
             Log.Error(ex.ToString());
         }
+        //MainWindow.IsOpen = true;
     }
-
 
     public static void SetupFont()
     {
@@ -179,6 +182,7 @@ public sealed class Plugin : IDalamudPlugin
                 var currentDcGroupName = currentWorld.DataCenter.Value.Name.ToString();
                 var orderId = string.Empty;
                 var targetDcGroupName = string.Empty;
+                var estimatedTime = 0;
                 if (isBack)
                 {
                     var targetWorld = worldSheet.GetRow((uint)targetWorldId);
@@ -209,8 +213,13 @@ public sealed class Plugin : IDalamudPlugin
                     targetDcGroupName = selectWorld.Target.AreaName;
                     Log.Information($"正在传送:{currentWorld.Name}@{currentDcGroupName} -> {selectWorld.Target.GroupName}@{targetDcGroupName}");
                     var waitTime = await DcTravelClient.QueryTravelQueueTime(selectWorld.Target.AreaId, selectWorld.Target.GroupId);
-                    Log.Info($"预计花费时间:{waitTime}");
-                    var costMsgBox = await MessageBoxWindow.Show(WindowSystem, title, $"预计时间:{waitTime}", MessageBoxType.YesNo);
+                    if (waitTime > 0)
+                    {
+                        // e.queueTime > 0 ? "(预计需" + parseInt(30 * (parseInt(e.queueTime / 30) + 1)) + "分钟内)" : "(无需等待)")
+                        estimatedTime = (waitTime / 30 + 1) * 30;
+                    }
+                    Log.Info($"预计花费时间:{estimatedTime} 分钟");
+                    var costMsgBox = await MessageBoxWindow.Show(WindowSystem, title, $"预计时间:{estimatedTime} 分钟内", MessageBoxType.YesNo);
                     if (costMsgBox == MessageBoxResult.Yes)
                     {
                         await Framework.RunOnFrameworkThread(GameFunctions.ReturnToTitle);
@@ -223,7 +232,10 @@ public sealed class Plugin : IDalamudPlugin
                         return;
                     }
                 }
-                await WaitingForOrder(orderId);
+                LobbyDKT.Open();
+                await WaitingForOrder(orderId, estimatedTime);
+                UIGlobals.PlaySoundEffect(67);
+                GameFunctions.RequestVibrationWhenReady();
                 await SelectDcAndLogin(targetDcGroupName);
             }
             catch (Exception ex)
@@ -233,20 +245,20 @@ public sealed class Plugin : IDalamudPlugin
             }
             finally
             {
-                WaitingWindow.IsOpen = false;
+                LobbyDKT.Close();
             }
         });
     }
 
-    public async Task WaitingForOrder(string orderId)
+    public async Task WaitingForOrder(string orderId, int estimatedTime)
     {
-        WaitingWindow.Open();
         OrderSatus status;
         while (true)
         {
+            GameFunctions.ResetTitleMovieTimer();
             status = await DcTravelClient!.QueryOrderStatus(orderId);
             Log.Information($"Current status:{status.Status}");
-            WaitingWindow.Status = status.Status;
+            LobbyDKT.SetStatus(status.Status, estimatedTime);
             if (status.Status == 5)
             {
                 return;
@@ -257,7 +269,7 @@ public sealed class Plugin : IDalamudPlugin
                 await DcTravelClient.MigrationConfirmOrder(orderId, confirmResult == MessageBoxResult.Ok);
                 if (confirmResult != MessageBoxResult.Ok)
                 {
-                    return;
+                    throw new Exception($"传送失败, 已取消");
                 }
             }
             else if (status.Status < 0)
@@ -312,10 +324,10 @@ public sealed class Plugin : IDalamudPlugin
     public void Dispose()
     {
         WindowSystem.RemoveAllWindows();
-
         ContextMenu.OnMenuOpened -= this.OnContextMenuOpened;
         this.TitleScreenButton?.Dispose();
         WorldSelectorWindows.Dispose();
+        //MainWindow?.Dispose();
     }
 
     private void DrawUI() => WindowSystem.Draw();
